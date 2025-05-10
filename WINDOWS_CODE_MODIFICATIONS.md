@@ -42,84 +42,86 @@ if os.path.exists(icon_path):
 ```
 
 ### 1.2 串口处理修改
-1. 在 `main.py` 中修改串口检测代码（约第150-160行）：
+1. 在 `main.py` 的 `get_available_ports` 方法中修改串口获取逻辑（约第200-250行）：
 ```python
-# 原代码：
-def get_available_ports():
-    if platform.system() == 'Windows':
-        ports = [f'COM{i}' for i in range(1, 10)]
-    else:
-        ports = [port.device for port in serial.tools.list_ports.comports()]
-    return ports
-
-# 修改为：
-def get_available_ports():
+def get_available_ports(self):
+    """获取可用的串口列表"""
     ports = []
     try:
-        if platform.system() == 'Windows':
-            for i in range(1, 10):
-                try:
-                    port = f'COM{i}'
-                    ser = serial.Serial(port)
-                    ser.close()
-                    ports.append(port)
-                except serial.SerialException:
-                    continue
-        else:
-            for port in serial.tools.list_ports.comports():
-                try:
-                    ser = serial.Serial(port.device)
-                    ser.close()
-                    ports.append(port.device)
-                except serial.SerialException:
-                    continue
+        # 使用 serial.tools.list_ports 获取实际可用的串口
+        available_ports = serial.tools.list_ports.comports()
+        for port in available_ports:
+            ports.append(port.device)
+        print(f"找到可用串口: {ports}")  # 添加调试信息
     except Exception as e:
         print(f"获取串口列表时出错: {e}")
     return ports
 ```
 
-2. 在 `main.py` 中修改串口连接代码（约第400-410行）：
+2. 在 `main.py` 的 `add_right_panel_components` 方法中修改串口选择相关代码（约第400-450行）：
 ```python
-# 原代码：
-ser = serial.Serial(port, baudrate)
+# 温度传感器串口选择
+self.temp_sensor_port_label = QLabel("Temperature Sensor Port:")
+self.right_layout.addWidget(self.temp_sensor_port_label)
+self.temp_sensor_port_combo = QComboBox()
+self.temp_sensor_port_combo.addItems(self.get_available_ports())
+# 添加刷新按钮
+refresh_ports_button = QPushButton("刷新串口列表")
+refresh_ports_button.clicked.connect(self.refresh_ports)
+self.right_layout.addWidget(self.temp_sensor_port_combo)
+self.right_layout.addWidget(refresh_ports_button)
 
-# 修改为：
-def connect_serial(port, baudrate=9600):
-    try:
-        ser = serial.Serial(
-            port=port,
-            baudrate=baudrate,
-            timeout=1,
-            write_timeout=1
-        )
-        if ser.is_open:
-            print(f"成功连接到串口 {port}")
-            return ser
-        return None
-    except Exception as e:
-        print(f"连接串口时出错: {e}")
-        return None
+# 电源发生器串口选择
+self.power_supply_port_label = QLabel("Power Supply Port:")
+self.right_layout.addWidget(self.power_supply_port_label)
+self.power_supply_port_combo = QComboBox()
+self.power_supply_port_combo.addItems(self.get_available_ports())
+self.right_layout.addWidget(self.power_supply_port_combo)
 ```
 
-3. 在 `MOD_700.py` 中修改串口读取代码（约第100-110行）：
+3. 在 `main.py` 中添加刷新串口列表的方法：
 ```python
-# 原代码：
-def read_temperature(self, channel):
-    return self.ser.readline()
+def refresh_ports(self):
+    """刷新串口列表"""
+    # 保存当前选择的串口
+    current_temp_port = self.temp_sensor_port_combo.currentText()
+    current_power_port = self.power_supply_port_combo.currentText()
+    
+    # 获取新的串口列表
+    ports = self.get_available_ports()
+    
+    # 更新下拉框
+    self.temp_sensor_port_combo.clear()
+    self.power_supply_port_combo.clear()
+    
+    # 添加新的串口列表
+    self.temp_sensor_port_combo.addItems(ports)
+    self.power_supply_port_combo.addItems(ports)
+    
+    # 尝试恢复之前的选择
+    if current_temp_port in ports:
+        self.temp_sensor_port_combo.setCurrentText(current_temp_port)
+    if current_power_port in ports:
+        self.power_supply_port_combo.setCurrentText(current_power_port)
+```
 
-# 修改为：
-def read_temperature(self, channel, timeout=1.0):
-    try:
-        if not self.ser or not self.ser.is_open:
-            return None
-        self.ser.timeout = timeout
-        data = self.ser.readline()
-        if data:
-            return data.decode('utf-8').strip()
-        return None
-    except Exception as e:
-        print(f"读取温度数据时出错: {e}")
-        return None
+4. 在 `main.py` 的 `start_control` 方法中修改串口连接相关代码（约第636-700行）：
+```python
+# 连接温度传感器
+temp_sensor_port = self.temp_sensor_port_combo.currentText().split(' - ')[0]  # 只取 COM 部分
+if not self.pid_controller.connect_sensor(temp_sensor_port):
+    QMessageBox.warning(self, "警告", "连接温度传感器失败")
+    return
+    
+# 连接电源发生器
+try:
+    power_supply_port = self.power_supply_port_combo.currentText().split(' - ')[0]  # 只取 COM 部分
+    if not self.pid_controller.connect_power_supply(power_supply_port):
+        QMessageBox.warning(self, "警告", "连接电源发生器失败")
+        return
+except Exception as e:
+    QMessageBox.warning(self, "错误", f"连接电源发生器时出错: {str(e)}")
+    return
 ```
 
 ### 1.3 电压限制修改
@@ -242,6 +244,14 @@ logging.basicConfig(
    - [ ] 确保最小电压限制（1.0V）仍然有效
    - [ ] 输入验证和错误处理已实现
 
+7. 串口功能检查：
+   - [ ] 串口列表能正确显示所有可用串口
+   - [ ] 串口描述信息显示正确
+   - [ ] 刷新串口列表功能正常
+   - [ ] 串口选择后能正确连接设备
+   - [ ] 串口断开后能正确提示错误
+   - [ ] 串口重连功能正常
+
 ## 4. 打包步骤
 
 1. 安装必要的包：
@@ -299,3 +309,11 @@ pyinstaller pid_control.spec
    - 验证PID输出是否在1.0V和最大电压值之间
    - 检查控制台输出的PID输出值是否符合预期
    - 检查日志文件中的相关错误信息 
+
+7. 如果串口功能异常：
+   - 检查设备管理器中串口是否正常显示
+   - 检查串口驱动是否正确安装
+   - 检查串口是否被其他程序占用
+   - 尝试重新插拔设备
+   - 检查串口权限设置
+   - 检查串口波特率等参数设置

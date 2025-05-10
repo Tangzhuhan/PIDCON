@@ -406,10 +406,16 @@ class PIDSystemUI(QMainWindow):
         # 添加分隔线
         self.right_layout.addWidget(QLabel("---"))
 
-        # 测试按钮
-        self.test_button = QPushButton("Test Temperature Sensors")
-        self.test_button.clicked.connect(self.test_temperature_sensors)
-        self.right_layout.addWidget(self.test_button)
+        # 将原来的测试按钮替换为按钮组
+        test_button_layout = QHBoxLayout()
+        self.start_test_button = QPushButton("Start Temperature Test")
+        self.stop_test_button = QPushButton("Stop Temperature Test")
+        self.start_test_button.clicked.connect(self.start_temperature_test)
+        self.stop_test_button.clicked.connect(self.stop_temperature_test)
+        self.stop_test_button.setEnabled(False)  # 初始时停止按钮禁用
+        test_button_layout.addWidget(self.start_test_button)
+        test_button_layout.addWidget(self.stop_test_button)
+        self.right_layout.addLayout(test_button_layout)
 
         # 测试状态显示
         self.test_status_label = QLabel("Test Status: Not Started")
@@ -663,7 +669,7 @@ class PIDSystemUI(QMainWindow):
         ki = float(self.ki_input.text())
         kd = float(self.kd_input.text())
         sampling_rate = self.sampling_rate_input.text()
-            initial_voltage = float(self.initial_voltage_input.text())
+        initial_voltage = float(self.initial_voltage_input.text())
         duration = float(self.duration_input.text())
         temp_error = float(self.tolerance_input.text())
         
@@ -676,7 +682,7 @@ class PIDSystemUI(QMainWindow):
         self.pid_controller.set_temp_error(temp_error)
         
         # 连接温度传感器
-            temp_sensor_port = self.temp_sensor_port_combo.currentText()
+        temp_sensor_port = self.temp_sensor_port_combo.currentText()
         if not self.pid_controller.connect_sensor(temp_sensor_port):
             QMessageBox.warning(self, "警告", "连接温度传感器失败")
             return
@@ -695,7 +701,7 @@ class PIDSystemUI(QMainWindow):
         self.pid_controller.set_selected_sensors(self.selected_sensors, self.main_sensor)
         
         # 启动控制
-            self.pid_controller.start()
+        self.pid_controller.start()
         
         # 启动控制线程
         self.control_thread = ControlThread(self.pid_controller)
@@ -768,7 +774,7 @@ class PIDSystemUI(QMainWindow):
                         print(f"关闭电源输出时发生错误: {e}")
                 
                 # 停止PID控制
-            self.pid_controller.stop()
+                self.pid_controller.stop()
                 print("PID控制器已停止")
             except Exception as e:
                 print(f"停止PID控制器时发生错误: {e}")
@@ -1009,12 +1015,6 @@ class PIDSystemUI(QMainWindow):
             QMessageBox.warning(self, "警告", "没有可导出的数据")
             return
             
-        print("\n=== 开始导出数据 ===")
-        print(f"时间数据长度: {len(data['time'])}")
-        print(f"电压数据长度: {len(data['voltage'])}")
-        print(f"电流数据长度: {len(data['current'])}")
-        print(f"温度数据通道数: {len(data['temperatures'])}")
-        
         # 创建温度数据字典
         temp_data = {
             'System Time': [datetime.fromtimestamp(t).strftime('%Y-%m-%d %H:%M:%S') for t in data['system_time']],
@@ -1026,14 +1026,6 @@ class PIDSystemUI(QMainWindow):
             channel_key = f'channel_{sensor}'
             if channel_key in data['temperatures'] and data['temperatures'][channel_key]:
                 temp_data[f'Sensor {sensor} Temperature (°C)'] = data['temperatures'][channel_key]
-                print(f"添加传感器 {sensor} 的温度数据，长度: {len(data['temperatures'][channel_key])}")
-        
-        # 添加主传感器温度数据（如果存在且不在选中列表中）
-        if self.main_sensor and self.main_sensor not in self.selected_sensors:
-            channel_key = f'channel_{self.main_sensor}'
-            if channel_key in data['temperatures'] and data['temperatures'][channel_key]:
-                temp_data[f'Sensor {self.main_sensor} Temperature (°C) (Main)'] = data['temperatures'][channel_key]
-                print(f"添加主传感器 {self.main_sensor} 的温度数据，长度: {len(data['temperatures'][channel_key])}")
         
         # 创建电压电流数据字典
         power_data = {
@@ -1043,36 +1035,15 @@ class PIDSystemUI(QMainWindow):
             'Current (A)': data['current']
         }
         
-        # 确保所有列长度相同
-        max_length = max(len(v) for v in temp_data.values())
-        for key in temp_data:
-            if len(temp_data[key]) < max_length:
-                temp_data[key].extend([None] * (max_length - len(temp_data[key])))
-        
-        max_length = max(len(v) for v in power_data.values())
-        for key in power_data:
-            if len(power_data[key]) < max_length:
-                power_data[key].extend([None] * (max_length - len(power_data[key])))
-        
         # 创建两个DataFrame
         temp_df = pd.DataFrame(temp_data)
         power_df = pd.DataFrame(power_data)
-        
-        # 获取保存目录
-        save_dir = self.save_dir_input.text()
-        if not save_dir:
-            save_dir = os.path.expanduser("~")
-        
-        # 生成文件名（使用当前时间）
-        current_time = datetime.now().strftime("%Y%m%d_%H%M%S")
-        default_filename = f"pid_data_{current_time}.xlsx"
-        default_path = os.path.join(save_dir, default_filename)
         
         # 选择保存路径
         file_path, _ = QFileDialog.getSaveFileName(
             self,
             "保存数据",
-            default_path,
+            self.save_dir_input.text(),
             "Excel Files (*.xlsx)"
         )
         
@@ -1082,19 +1053,12 @@ class PIDSystemUI(QMainWindow):
                 with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
                     # 写入温度数据
                     temp_df.to_excel(writer, sheet_name='Temperature Data', index=False)
-                    print(f"温度数据已写入，行数: {len(temp_df)}")
-                    
                     # 写入电压电流数据
                     power_df.to_excel(writer, sheet_name='Power Data', index=False)
-                    print(f"电压电流数据已写入，行数: {len(power_df)}")
                 
-                print(f"数据已成功保存到: {file_path}")
                 QMessageBox.information(self, "成功", "数据已成功保存")
             except Exception as e:
-                print(f"保存数据时发生错误: {e}")
                 QMessageBox.critical(self, "错误", f"保存数据失败: {str(e)}")
-        else:
-            print("用户取消了保存操作")
 
     def enlarge_plot(self, evt, plot_widget, title):
         """双击放大图表"""
@@ -1164,8 +1128,8 @@ class PIDSystemUI(QMainWindow):
                         plot.setTitle("点击图例")
                         plot.repaint()
 
-    def test_temperature_sensors(self):
-        """测试温度传感器"""
+    def start_temperature_test(self):
+        """开始温度测试"""
         # 获取当前选择的串口
         port = self.temp_sensor_port_combo.currentText()
         if not port:
@@ -1209,8 +1173,10 @@ class PIDSystemUI(QMainWindow):
         self.test_timer.timeout.connect(self.update_test_data)
         self.test_timer.start(1000)  # 每秒更新一次
 
-        # 设置60秒后自动停止测试
-        QTimer.singleShot(60000, self.stop_temperature_test)
+        # 更新按钮状态
+        self.start_test_button.setEnabled(False)
+        self.stop_test_button.setEnabled(True)
+        self.test_status_label.setText("Test Status: Running")
 
     def update_test_data(self):
         """更新测试数据"""
@@ -1293,10 +1259,59 @@ class PIDSystemUI(QMainWindow):
         self.temperature_plot.enableAutoRange()
 
     def stop_temperature_test(self):
-        """停止温度测试"""
+        """停止温度测试并保存数据"""
         if hasattr(self, 'test_timer'):
             self.test_timer.stop()
             print("温度传感器测试完成")
+            
+            # 更新按钮状态
+            self.start_test_button.setEnabled(True)
+            self.stop_test_button.setEnabled(False)
+            self.test_status_label.setText("Test Status: Completed")
+            
+            # 保存测试数据
+            self.save_test_data()
+
+    def save_test_data(self):
+        """保存测试数据"""
+        if not self.test_data['time']:
+            QMessageBox.warning(self, "警告", "没有测试数据可保存")
+            return
+
+        # 创建DataFrame
+        df = pd.DataFrame()
+        df['Time (s)'] = self.test_data['time']
+        
+        # 添加所有传感器的温度数据
+        for channel, temps in self.test_data['temperatures'].items():
+            sensor_num = int(channel.split('_')[1])
+            df[f'Sensor {sensor_num} Temperature (°C)'] = temps
+
+        # 获取保存目录
+        save_dir = self.save_dir_input.text()
+        if not save_dir:
+            QMessageBox.warning(self, "警告", "请先设置数据保存目录")
+            return
+
+        # 生成文件名
+        current_time = datetime.now().strftime("%Y%m%d_%H%M%S")
+        default_filename = f"temperature_test_{current_time}.xlsx"
+        default_path = os.path.join(save_dir, default_filename)
+
+        # 选择保存路径
+        file_path, _ = QFileDialog.getSaveFileName(
+            self,
+            "保存测试数据",
+            default_path,
+            "Excel Files (*.xlsx)"
+        )
+
+        if file_path:
+            try:
+                df.to_excel(file_path, index=False)
+                QMessageBox.information(self, "成功", "测试数据已保存")
+            except Exception as e:
+                QMessageBox.critical(self, "错误", f"保存测试数据失败: {e}")
 
     def test_power_supply(self):
         """测试电源发生器"""

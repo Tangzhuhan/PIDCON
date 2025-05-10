@@ -138,7 +138,7 @@ class PIDController:
                     if self.power_supply.set_voltage(self.initial_voltage):
                         print(f"成功设置初始电压: {self.initial_voltage}V")
                         voltage_set = True
-                break
+                    break
                 except:
                     print("设置初始电压失败，重试中...")
                     time.sleep(0.5)
@@ -267,7 +267,7 @@ class PIDController:
         if self.power_supply:
             try:
                 print("正在关闭电源输出...")
-        self.power_supply.off_output()
+                self.power_supply.off_output()
                 print("电源输出已关闭")
             except Exception as e:
                 print(f"关闭电源输出时发生错误: {e}")
@@ -276,7 +276,7 @@ class PIDController:
         if self.power_supply:
             try:
                 print("正在关闭电源发生器串口...")
-        self.power_supply.close()
+                self.power_supply.close()
                 print("电源发生器串口已关闭")
             except Exception as e:
                 print(f"关闭电源发生器串口时发生错误: {e}")
