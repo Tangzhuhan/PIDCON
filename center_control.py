@@ -17,6 +17,7 @@ class PIDController:
         self.initial_voltage = 0.0  # 初始电压
         self.duration = 0.0  # 控制持续时间（秒）
         self.temp_error = 0.1  # 温度误差范围
+        self.warmup_time = 5.0  # 预热时间（秒）
         
         # 死区控制参数
         self.dead_zone = 1.0  # 死区范围（°C）
@@ -82,6 +83,10 @@ class PIDController:
         except (ValueError, TypeError):
             print(f"警告: 采样率 {rate} 不是有效的数字，使用默认值 1000ms")
             self.sampling_rate = 1000.0
+
+    def set_warmup_time(self, time):
+        """设置预热时间（秒）"""
+        self.warmup_time = float(time)
 
     def connect_sensor(self, port):
         """连接温度传感器"""
@@ -167,9 +172,9 @@ class PIDController:
             if not output_on:
                 print("开启电源输出失败，将继续运行但可能无法控制温度")
             
-            # 添加20秒预热时间
-            print("开始预热，等待20秒...")
-            self.record_warmup_data(20)  # 记录预热数据
+            # 添加预热时间
+            print(f"开始预热，等待{self.warmup_time}秒...")
+            self.record_warmup_data(self.warmup_time)  # 记录预热数据
             print("预热完成，开始PID控制")
             
             # 记录PID控制开始时间

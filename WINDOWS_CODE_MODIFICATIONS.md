@@ -47,14 +47,14 @@ if os.path.exists(icon_path):
 def get_available_ports(self):
     """获取可用的串口列表"""
     ports = []
-    try:
-        # 使用 serial.tools.list_ports 获取实际可用的串口
-        available_ports = serial.tools.list_ports.comports()
-        for port in available_ports:
+    if platform.system() == 'Windows':
+        # Windows系统
+        for i in range(1, 10):
+            ports.append(f'COM{i}')
+    else:
+        # Mac/Linux系统
+        for port in serial.tools.list_ports.comports():
             ports.append(port.device)
-        print(f"找到可用串口: {ports}")  # 添加调试信息
-    except Exception as e:
-        print(f"获取串口列表时出错: {e}")
     return ports
 ```
 
@@ -317,3 +317,205 @@ pyinstaller pid_control.spec
    - 尝试重新插拔设备
    - 检查串口权限设置
    - 检查串口波特率等参数设置
+
+## 2024-03-21: 预热时间设置功能更新
+
+### 修改内容
+1. 在左侧面板添加预热时间设置输入框
+2. 更新PID控制器预热时间参数设置
+3. 修改默认预热时间为20秒
+
+### 具体修改
+1. 在 `add_left_panel_components` 方法中添加预热时间设置：
+```python
+# 预热时间设置
+self.warmup_label = QLabel("Warm-up Time (s):")
+self.left_layout.addWidget(self.warmup_label)
+self.warmup_input = QLineEdit()
+self.warmup_input.setText("20")  # 默认20秒
+self.left_layout.addWidget(self.warmup_input)
+```
+
+2. 在 `start_control` 方法中添加预热时间参数获取和设置：
+```python
+# 获取预热时间
+warmup_time = float(self.warmup_input.text())
+
+# 设置预热时间
+self.pid_controller.set_warmup_time(warmup_time)
+```
+
+### 注意事项
+1. 确保PID控制器类中已实现 `set_warmup_time` 方法
+2. 预热时间输入框的值需要做有效性验证
+3. 建议添加预热时间的范围限制（例如：5-300秒）
+
+### 测试要点
+1. 验证预热时间设置是否正确保存和读取
+2. 测试不同预热时间值的效果
+3. 验证预热时间参数在控制过程中的正确应用
+```
+
+## 6. 数据结构改进
+
+### 改动内容：
+```python
+# 原来只有一个control_data
+self.control_data = {
+    'time': [],
+    'temperatures': {},
+    'voltage': [],
+    'current': []
+}
+
+# 新增两个数据结构
+self.continuous_data = {
+    'experiments': [],  # 存储每次实验的数据
+    'experiment_count': 0
+}
+
+self.current_experiment_data = {
+    'time': [],
+    'temperatures': {},
+    'voltage': [],
+    'current': [],
+    'start_time': None,
+    'end_time': None
+}
+```
+
+### 改动依据和思路：
+- **问题分析**：原来的代码只有一个`control_data`，无法区分单次实验和连续实验的数据
+- **解决思路**：采用三级数据结构
+  1. `control_data`：用于实时图表显示（不变）
+  2. `current_experiment_data`：存储当前单次实验的完整数据
+  3. `continuous_data`：存储所有实验的历史数据，支持连续导出
+
+## 7. 数据同步机制优化
+
+### 改动内容：
+在`update_plots`方法中，同时更新三个数据结构：
+```python
+# 同步更新三个数据结构
+self.control_data['time'].append(current_time)
+self.current_experiment_data['time'].append(current_time)
+
+# 对于每个数据类型都做同样处理
+if current_voltage is not None:
+    self.control_data['voltage'].append(current_voltage)
+    self.current_experiment_data['voltage'].append(current_voltage)
+else:
+    # 失败时用None填充，保持数据长度一致
+    self.control_data['voltage'].append(None)
+    self.current_experiment_data['voltage'].append(None)
+```
+
+### 改动依据和思路：
+- **问题分析**：数据缺失可能是因为：
+  1. 不同传感器读取时机不同步
+  2. 某个传感器读取失败时没有占位符
+  3. 数组长度不一致导致pandas创建DataFrame时出错
+- **解决思路**：
+  1. 确保所有数据数组长度始终保持一致
+  2. 读取失败时用None占位，而不是跳过
+  3. 在每次数据更新时同步更新所有相关数据结构
+
+## 8. 导出功能拆分
+
+### 改动内容：
+```python
+# 原来只有一个导出按钮
+self.export_button = QPushButton("Export Data")
+
+# 改为两个按钮
+self.export_single_button = QPushButton("Export Current Experiment")
+self.export_continuous_button = QPushButton("Export All Experiments")
+```
+
+### 改动依据和思路：
+- **用户需求**：需要两种导出模式
+  1. 单次实验：只导出当前实验数据
+  2. 连续实验：导出所有实验数据并自动拼接
+- **设计思路**：
+  1. 保持界面简洁，用两个按钮明确区分功能
+  2. 单次导出使用`current_experiment_data`
+  3. 连续导出使用`continuous_data`，包含实验ID和时间信息
+
+## 9. 异常处理改进
+
+### 改动内容：
+```python
+# 每个传感器读取都有独立的异常处理
+for sensor in self.selected_sensors:
+    try:
+        temp = self.pid_controller.modbus_sensor.read_temperature(sensor)
+        # 处理成功的情况
+    except Exception as e:
+        print(f"读取传感器 {sensor} 温度失败: {e}")
+        # 用None填充，保持数据完整性
+        channel_key = f'channel_{sensor}'
+        if channel_key not in self.control_data['temperatures']:
+            self.control_data['temperatures'][channel_key] = [None] * data_length
+```
+
+### 改动依据和思路：
+- **问题分析**：任何一个传感器读取失败都可能导致整个数据结构不完整
+- **解决思路**：
+  1. 为每个传感器单独处理异常
+  2. 失败时用None填充，确保数据结构完整性
+  3. 记录错误日志，便于调试
+
+## 10. 实验生命周期管理
+
+### 改动内容：
+```python
+def start_control(self):
+    # 记录实验开始时间
+    self.start_time = time.time()
+    self.current_experiment_data['start_time'] = self.start_time
+    # 清空当前实验数据，保留历史数据
+
+def stop_control(self):
+    # 记录实验结束时间
+    self.current_experiment_data['end_time'] = time.time()
+    # 将当前实验数据保存到连续实验数据中
+    self.continuous_data['experiments'].append(experiment_copy)
+```
+
+### 改动依据和思路：
+- **设计目标**：完整追踪每次实验的生命周期
+- **实现思路**：
+  1. 在实验开始时初始化数据结构
+  2. 在实验结束时归档数据到历史记录
+  3. 为每次实验分配唯一ID，便于管理和追溯
+
+## 11. 数据导出优化
+
+### 改动内容：
+```python
+# 连续实验导出时添加实验摘要
+summary_data = {
+    'Experiment ID': [],
+    'Start Time': [],
+    'End Time': [],
+    'Duration (s)': []
+}
+# 为每次实验生成摘要信息
+```
+
+### 改动依据和思路：
+- **用户体验**：连续实验数据量大，需要概览信息
+- **设计思路**：
+  1. 主数据sheet存储详细数据
+  2. 摘要sheet提供实验概览
+  3. 包含时间戳、持续时间等关键信息
+
+## 设计原则总结：
+
+1. **数据完整性**：确保所有数据数组长度一致，即使出现错误也要保持结构完整
+2. **功能分离**：单次和连续实验数据分开管理，避免相互影响
+3. **错误容错**：异常情况下用合理默认值填充，而不是中断程序
+4. **用户友好**：提供清晰的功能选择，满足不同使用场景
+5. **数据溯源**：记录完整的时间信息和实验ID，便于后续分析
+
+这种设计既解决了您提到的具体问题（数据缺失、连续保存），又为将来的功能扩展留出了空间。
