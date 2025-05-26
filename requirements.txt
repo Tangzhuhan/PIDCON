@@ -1,0 +1,5 @@
+pyserial
+pyqtgraph
+pandas
+PyQt5
+pyinstaller 
