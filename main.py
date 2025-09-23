@@ -18,6 +18,8 @@ from appdirs import user_data_dir
 import time
 from collections import deque
 import numpy as np
+import logging
+import traceback
 
 class ControlThread(QThread):
     """控制线程类，用于在后台运行PID控制"""
@@ -1769,6 +1771,26 @@ class PIDSystemUI(QMainWindow):
         except Exception as e:
             print(f"加载材料参数时发生错误: {e}")
             self.material_params = {}
+    # 设置异常钩子
+    def exception_hook(exctype, value, traceback_obj):
+        print("未捕获的异常:")
+        print("类型:", exctype)
+        print("值:", value)
+        print("追踪:", traceback.format_tb(traceback_obj))
+        sys.__excepthook__(exctype, value, traceback_obj)
+    
+    sys.excepthook = exception_hook
+    
+    # 设置日志目录
+    log_dir = os.path.join(user_data_dir('PIDTempControl', 'Personal'), 'logs')
+    os.makedirs(log_dir, exist_ok=True)
+    
+    # 配置日志
+    logging.basicConfig(
+        filename=os.path.join(log_dir, 'pid_control.log'),
+        level=logging.DEBUG,
+        format='%(asctime)s - %(levelname)s - %(message)s'
+    )
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
