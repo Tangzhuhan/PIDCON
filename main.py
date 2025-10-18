@@ -1253,13 +1253,15 @@ class PIDSystemUI(QMainWindow):
             # 获取当前时间
             current_time = time.time() - self.start_time if hasattr(self, 'start_time') else 0
             
+            # 先添加时间数据，确保所有数据都有相同的时间轴
+            self.control_data['time'].append(current_time)
+            
             # 更新电压图表
             self.voltage_plot.clear()
             try:
                 current_voltage = self.pid_controller.power_supply.read_voltage()
                 if current_voltage is not None:
                     self.control_data['voltage'].append(current_voltage)
-                    self.control_data['time'].append(current_time)
                     # 确保数组长度匹配
                     if len(self.control_data['time']) == len(self.control_data['voltage']):
                         self.voltage_plot.plot(
