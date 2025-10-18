@@ -75,8 +75,8 @@ class PIDController:
         self.temp_error = error
 
     def set_duration(self, duration):
-        """设置目标持续时间（分钟）"""
-        self.duration = duration * 60  # 转换为秒
+        """设置目标持续时间（秒）"""
+        self.duration = duration
 
     def set_sampling_rate(self, rate):
         """设置采样率（毫秒）"""

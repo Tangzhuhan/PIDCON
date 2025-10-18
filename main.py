@@ -588,7 +588,7 @@ class PIDSystemUI(QMainWindow):
         self.warmup_time_label = QLabel("Warmup Time (s):")
         self.left_layout.addWidget(self.warmup_time_label)
         self.warmup_time_input = QLineEdit()
-        self.warmup_time_input.setText("30")  # 默认5分钟
+        self.warmup_time_input.setText("30")  # 默认30秒
         self.left_layout.addWidget(self.warmup_time_input)
 
         # 目标温度输入
@@ -598,10 +598,10 @@ class PIDSystemUI(QMainWindow):
         self.left_layout.addWidget(self.setpoint_input)
 
         # 持续时间设置
-        self.duration_label = QLabel("Duration (minutes):")
+        self.duration_label = QLabel("Duration (seconds):")
         self.left_layout.addWidget(self.duration_label)
         self.duration_input = QLineEdit()
-        self.duration_input.setText("30")
+        self.duration_input.setText("1800")
         self.left_layout.addWidget(self.duration_input)
 
         # 温度误差范围设置
@@ -934,9 +934,9 @@ class PIDSystemUI(QMainWindow):
         self.pid_controller.set_duration(duration)
         self.pid_controller.set_temp_error(temp_error)
         
-        # 设置目标持续时间（转换为秒）
-        self.target_duration = int(duration * 60)
-        print(f"设置目标持续时间: {duration} 分钟 ({self.target_duration} 秒)")
+        # 设置目标持续时间（秒）
+        self.target_duration = int(duration)
+        print(f"设置目标持续时间: {duration} 秒")
         
         # 连接温度传感器
         temp_sensor_port = self.temp_sensor_port_combo.currentText()
@@ -1189,7 +1189,7 @@ class PIDSystemUI(QMainWindow):
         print("=== 自动控制已完全停止 ===\n")
         
         # 显示自动停止完成的消息
-        QMessageBox.information(self, "自动停止完成", f"已达到设定的持续时间 {self.target_duration//60} 分钟，控制已自动停止")
+        QMessageBox.information(self, "自动停止完成", f"已达到设定的持续时间 {self.target_duration} 秒，控制已自动停止")
 
     def update_elapsed_time(self):
         if self.is_running and not self.is_paused:
