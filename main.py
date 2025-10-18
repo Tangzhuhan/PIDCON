@@ -917,12 +917,7 @@ class PIDSystemUI(QMainWindow):
             return
         
         # 在开始新的控制之前清空数据
-        self.control_data = {
-            'time': [],
-            'temperatures': {},
-            'voltage': [],
-            'current': []
-        }
+        self.clear_all_data()
         
         # 设置PID参数
         self.pid_controller.set_pid_params(kp, ki, kd)
@@ -1253,15 +1248,13 @@ class PIDSystemUI(QMainWindow):
             # 获取当前时间
             current_time = time.time() - self.start_time if hasattr(self, 'start_time') else 0
             
-            # 先添加时间数据，确保所有数据都有相同的时间轴
-            self.control_data['time'].append(current_time)
-            
             # 更新电压图表
             self.voltage_plot.clear()
             try:
                 current_voltage = self.pid_controller.power_supply.read_voltage()
                 if current_voltage is not None:
                     self.control_data['voltage'].append(current_voltage)
+                    self.control_data['time'].append(current_time)
                     # 确保数组长度匹配
                     if len(self.control_data['time']) == len(self.control_data['voltage']):
                         self.voltage_plot.plot(
@@ -1471,8 +1464,47 @@ class PIDSystemUI(QMainWindow):
                     power_df.to_excel(writer, sheet_name='Power Data', index=False)
                 
                 QMessageBox.information(self, "成功", "数据已成功保存")
+                
+                # 导出成功后清空所有数据
+                self.clear_all_data()
             except Exception as e:
                 QMessageBox.critical(self, "错误", f"保存数据失败: {str(e)}")
+
+    def clear_all_data(self):
+        """清空所有数据，包括UI层和控制器层数据"""
+        # 清空UI层数据
+        self.control_data = {
+            'time': [],
+            'temperatures': {},
+            'voltage': [],
+            'current': []
+        }
+        
+        # 清空控制器层数据
+        if self.pid_controller:
+            # 清空PID控制数据
+            self.pid_controller.time_data = []
+            self.pid_controller.system_time_data = deque(maxlen=1000)
+            self.pid_controller.voltage_data = []
+            self.pid_controller.current_data = []
+            self.pid_controller.temperature_data = {}
+            
+            # 清空预热数据
+            self.pid_controller.warmup_time_data = []
+            self.pid_controller.warmup_system_time_data = []
+            self.pid_controller.warmup_voltage_data = []
+            self.pid_controller.warmup_current_data = []
+            self.pid_controller.warmup_temperature_data = {}
+        
+        # 清空图表显示
+        if hasattr(self, 'voltage_plot'):
+            self.voltage_plot.clear()
+        if hasattr(self, 'current_plot'):
+            self.current_plot.clear()
+        if hasattr(self, 'temperature_plot'):
+            self.temperature_plot.clear()
+        
+        print("所有数据已清空，准备开始新的实验")
 
     def enlarge_plot(self, evt, plot_widget, title):
         """双击放大图表"""
