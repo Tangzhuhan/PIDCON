@@ -211,30 +211,41 @@ class PIDController:
                 
                 # 读取所有选中传感器的温度
                 for sensor in self.selected_sensors:
+                    channel_key = f'channel_{sensor}'
+                    if channel_key not in self.warmup_temperature_data:
+                        self.warmup_temperature_data[channel_key] = []
+                    
                     try:
                         temperature = self.modbus_sensor.read_temperature(sensor)
                         if temperature is not None:
-                            channel_key = f'channel_{sensor}'
-                            if channel_key not in self.warmup_temperature_data:
-                                self.warmup_temperature_data[channel_key] = []
                             self.warmup_temperature_data[channel_key].append(temperature)
                             print(f"记录预热传感器 {sensor} 温度: {temperature}°C")
+                        else:
+                            self.warmup_temperature_data[channel_key].append(0.0)
+                            print(f"预热传感器 {sensor} 温度读取失败，记录为0°C")
                     except Exception as e:
                         print(f"读取预热传感器 {sensor} 温度失败: {e}")
-                        continue
+                        self.warmup_temperature_data[channel_key].append(0.0)
+                        print(f"预热传感器 {sensor} 温度数据用0填充")
                 
                 # 读取主传感器的温度（如果存在且不在选中列表中）
                 if self.main_sensor and self.main_sensor not in self.selected_sensors:
+                    channel_key = f'channel_{self.main_sensor}'
+                    if channel_key not in self.warmup_temperature_data:
+                        self.warmup_temperature_data[channel_key] = []
+                    
                     try:
                         temperature = self.modbus_sensor.read_temperature(self.main_sensor)
                         if temperature is not None:
-                            channel_key = f'channel_{self.main_sensor}'
-                            if channel_key not in self.warmup_temperature_data:
-                                self.warmup_temperature_data[channel_key] = []
                             self.warmup_temperature_data[channel_key].append(temperature)
                             print(f"记录预热主传感器 {self.main_sensor} 温度: {temperature}°C")
+                        else:
+                            self.warmup_temperature_data[channel_key].append(0.0)
+                            print(f"预热主传感器 {self.main_sensor} 温度读取失败，记录为0°C")
                     except Exception as e:
                         print(f"读取预热主传感器 {self.main_sensor} 温度失败: {e}")
+                        self.warmup_temperature_data[channel_key].append(0.0)
+                        print(f"预热主传感器 {self.main_sensor} 温度数据用0填充")
                 
                 # 读取电压和电流
                 try:
@@ -242,13 +253,23 @@ class PIDController:
                     if voltage is not None:
                         self.warmup_voltage_data.append(voltage)
                         print(f"记录预热电压: {voltage}V")
+                    else:
+                        self.warmup_voltage_data.append(0.0)
+                        print("预热电压读取失败，记录为0V")
                     
                     current = self.power_supply.read_current()
                     if current is not None:
                         self.warmup_current_data.append(current)
                         print(f"记录预热电流: {current}A")
+                    else:
+                        self.warmup_current_data.append(0.0)
+                        print("预热电流读取失败，记录为0A")
                 except Exception as e:
                     print(f"读取预热电压或电流失败: {e}")
+                    # 确保数据长度一致，用0填充
+                    self.warmup_voltage_data.append(0.0)
+                    self.warmup_current_data.append(0.0)
+                    print("预热电压和电流数据用0填充")
                 
                 # 等待采样间隔
                 time.sleep(self.sampling_rate / 1000.0)
@@ -419,30 +440,41 @@ class PIDController:
                 
                 # 读取所有选中传感器的温度
                 for sensor in self.selected_sensors:
+                    channel_key = f'channel_{sensor}'
+                    if channel_key not in self.temperature_data:
+                        self.temperature_data[channel_key] = []
+                    
                     try:
                         temperature = self.modbus_sensor.read_temperature(sensor)
                         if temperature is not None:
-                            channel_key = f'channel_{sensor}'
-                            if channel_key not in self.temperature_data:
-                                self.temperature_data[channel_key] = []
                             self.temperature_data[channel_key].append(temperature)
                             print(f"记录传感器 {sensor} 温度: {temperature}°C")
+                        else:
+                            self.temperature_data[channel_key].append(0.0)
+                            print(f"传感器 {sensor} 温度读取失败，记录为0°C")
                     except Exception as e:
                         print(f"读取传感器 {sensor} 温度失败: {e}")
-                        continue
+                        self.temperature_data[channel_key].append(0.0)
+                        print(f"传感器 {sensor} 温度数据用0填充")
 
                 # 读取主传感器的温度（如果存在且不在选中列表中）
                 if self.main_sensor and self.main_sensor not in self.selected_sensors:
+                    channel_key = f'channel_{self.main_sensor}'
+                    if channel_key not in self.temperature_data:
+                        self.temperature_data[channel_key] = []
+                    
                     try:
                         temperature = self.modbus_sensor.read_temperature(self.main_sensor)
                         if temperature is not None:
-                            channel_key = f'channel_{self.main_sensor}'
-                            if channel_key not in self.temperature_data:
-                                self.temperature_data[channel_key] = []
                             self.temperature_data[channel_key].append(temperature)
                             print(f"记录主传感器 {self.main_sensor} 温度: {temperature}°C")
+                        else:
+                            self.temperature_data[channel_key].append(0.0)
+                            print(f"主传感器 {self.main_sensor} 温度读取失败，记录为0°C")
                     except Exception as e:
                         print(f"读取主传感器 {self.main_sensor} 温度失败: {e}")
+                        self.temperature_data[channel_key].append(0.0)
+                        print(f"主传感器 {self.main_sensor} 温度数据用0填充")
                 return
 
             # 如果不是暂停状态，执行正常的PID控制逻辑
@@ -517,46 +549,69 @@ class PIDController:
             # 读取所有选中传感器的温度
             temperatures = {}
             for sensor in self.selected_sensors:
+                channel_key = f'channel_{sensor}'
+                if channel_key not in self.temperature_data:
+                    self.temperature_data[channel_key] = []
+                
                 try:
                     temperature = self.modbus_sensor.read_temperature(sensor)
                     if temperature is not None:
                         temperatures[sensor] = temperature
-                        channel_key = f'channel_{sensor}'
-                        if channel_key not in self.temperature_data:
-                            self.temperature_data[channel_key] = []
                         self.temperature_data[channel_key].append(temperature)
                         print(f"记录传感器 {sensor} 温度: {temperature}°C")
+                    else:
+                        self.temperature_data[channel_key].append(0.0)
+                        print(f"传感器 {sensor} 温度读取失败，记录为0°C")
                 except Exception as e:
                     print(f"读取传感器 {sensor} 温度失败: {e}")
-                    continue
+                    self.temperature_data[channel_key].append(0.0)
+                    print(f"传感器 {sensor} 温度数据用0填充")
 
             # 读取主传感器的温度（如果存在且不在选中列表中）
             if self.main_sensor and self.main_sensor not in self.selected_sensors:
+                channel_key = f'channel_{self.main_sensor}'
+                if channel_key not in self.temperature_data:
+                    self.temperature_data[channel_key] = []
+                
                 try:
                     temperature = self.modbus_sensor.read_temperature(self.main_sensor)
                     if temperature is not None:
                         temperatures[self.main_sensor] = temperature
-                        channel_key = f'channel_{self.main_sensor}'
-                        if channel_key not in self.temperature_data:
-                            self.temperature_data[channel_key] = []
                         self.temperature_data[channel_key].append(temperature)
                         print(f"记录主传感器 {self.main_sensor} 温度: {temperature}°C")
+                    else:
+                        self.temperature_data[channel_key].append(0.0)
+                        print(f"主传感器 {self.main_sensor} 温度读取失败，记录为0°C")
                 except Exception as e:
                     print(f"读取主传感器 {self.main_sensor} 温度失败: {e}")
+                    self.temperature_data[channel_key].append(0.0)
+                    print(f"主传感器 {self.main_sensor} 温度数据用0填充")
 
             # 读取电压和电流
+            voltage = None
+            current = None
             try:
                 voltage = self.power_supply.read_voltage()
                 if voltage is not None:
                     self.voltage_data.append(voltage)
                     print(f"记录电压: {voltage}V")
+                else:
+                    self.voltage_data.append(0.0)
+                    print("电压读取失败，记录为0V")
                 
                 current = self.power_supply.read_current()
                 if current is not None:
                     self.current_data.append(current)
                     print(f"记录电流: {current}A")
+                else:
+                    self.current_data.append(0.0)
+                    print("电流读取失败，记录为0A")
             except Exception as e:
                 print(f"读取电压或电流失败: {e}")
+                # 确保数据长度一致，用0填充
+                self.voltage_data.append(0.0)
+                self.current_data.append(0.0)
+                print("电压和电流数据用0填充")
 
             # 更新当前温度（使用主传感器或第一个选中传感器的温度）
             if self.main_sensor and self.main_sensor in temperatures:
@@ -636,6 +691,39 @@ class PIDController:
             warmup_temps = self.warmup_temperature_data.get(channel, [])
             control_temps = self.temperature_data.get(channel, [])
             data['temperatures'][channel] = warmup_temps + control_temps
+        
+        # 数据长度检查和填充
+        base_length = len(data['time'])
+        print(f"\n=== 数据长度检查和填充 ===")
+        print(f"基准长度（时间数据）: {base_length}")
+        
+        # 数据长度检查和填充函数
+        def ensure_length(data_list, target_length, fill_value=0.0, data_name=""):
+            """确保数据列表长度与目标长度一致，不足时用fill_value填充"""
+            if len(data_list) < target_length:
+                print(f"{data_name}数据长度不足: {len(data_list)} < {target_length}，用{fill_value}填充")
+                data_list.extend([fill_value] * (target_length - len(data_list)))
+            elif len(data_list) > target_length:
+                print(f"{data_name}数据长度超出: {len(data_list)} > {target_length}，截取前{target_length}个数据")
+                data_list = data_list[:target_length]
+            return data_list
+        
+        # 确保所有数据长度一致
+        data['system_time'] = ensure_length(data['system_time'], base_length, 0.0, "系统时间")
+        data['voltage'] = ensure_length(data['voltage'], base_length, 0.0, "电压")
+        data['current'] = ensure_length(data['current'], base_length, 0.0, "电流")
+        
+        # 确保温度数据长度一致
+        for channel_key in data['temperatures']:
+            data['temperatures'][channel_key] = ensure_length(
+                data['temperatures'][channel_key], 
+                base_length, 
+                0.0, 
+                f"温度{channel_key}"
+            )
+        
+        print(f"数据长度检查完成，所有数据长度: {base_length}")
+        print("=== 数据长度检查和填充完成 ===\n")
         
         return data
 

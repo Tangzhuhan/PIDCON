@@ -18,6 +18,8 @@ from appdirs import user_data_dir
 import time
 from collections import deque
 import numpy as np
+import logging
+import traceback
 
 class ControlThread(QThread):
     """控制线程类，用于在后台运行PID控制"""
@@ -932,6 +934,10 @@ class PIDSystemUI(QMainWindow):
         self.pid_controller.set_duration(duration)
         self.pid_controller.set_temp_error(temp_error)
         
+        # 设置目标持续时间（转换为秒）
+        self.target_duration = int(duration * 60)
+        print(f"设置目标持续时间: {duration} 分钟 ({self.target_duration} 秒)")
+        
         # 连接温度传感器
         temp_sensor_port = self.temp_sensor_port_combo.currentText()
         if not self.pid_controller.connect_sensor(temp_sensor_port):
@@ -972,6 +978,9 @@ class PIDSystemUI(QMainWindow):
         self.is_running = True
         self.is_paused = False
         self.status_label.setText("Status: Running")
+        
+        # 重置计时器
+        self.elapsed_seconds = 0
         
         # 记录开始时间
         self.start_time = time.time()
@@ -1070,6 +1079,7 @@ class PIDSystemUI(QMainWindow):
         self.is_running = False
         self.is_paused = False
         self.elapsed_seconds = 0
+        self.target_duration = 0  # 重置目标持续时间
         self.update_elapsed_time()
         
         # 更新状态显示
@@ -1083,12 +1093,116 @@ class PIDSystemUI(QMainWindow):
         # 显示停止完成的消息
         QMessageBox.information(self, "停止完成", "控制已完全停止")
 
+    def auto_stop_control(self):
+        """自动停止控制（达到设定时间时调用）"""
+        print("\n=== 自动停止控制 ===")
+        
+        # 立即禁用所有控制按钮，防止重复点击
+        self.start_button.setEnabled(False)
+        self.pause_button.setEnabled(False)
+        self.stop_button.setEnabled(False)
+        
+        # 立即更新状态显示
+        self.status_label.setText("Status: Auto Stopping...")
+        self.is_running = False
+        self.is_paused = False
+        
+        # 立即停止所有定时器
+        if hasattr(self, 'timer'):
+            try:
+                self.timer.stop()
+                print("已停止状态更新定时器")
+            except Exception as e:
+                print(f"停止状态更新定时器时发生错误: {e}")
+        
+        if hasattr(self, 'elapsed_timer'):
+            try:
+                self.elapsed_timer.stop()
+                print("已停止计时器")
+            except Exception as e:
+                print(f"停止计时器时发生错误: {e}")
+        
+        # 立即停止PID控制器
+        if self.pid_controller:
+            try:
+                print("正在停止PID控制器...")
+                # 先设置电压为0
+                if self.pid_controller.power_supply:
+                    try:
+                        self.pid_controller.power_supply.set_voltage(0)
+                        print("已将电压设置为0")
+                    except Exception as e:
+                        print(f"设置电压为0时发生错误: {e}")
+                
+                # 关闭电源输出
+                if self.pid_controller.power_supply:
+                    try:
+                        self.pid_controller.power_supply.off_output()
+                        print("已关闭电源输出")
+                    except Exception as e:
+                        print(f"关闭电源输出时发生错误: {e}")
+                
+                # 停止PID控制
+                self.pid_controller.stop()
+                print("PID控制器已停止")
+            except Exception as e:
+                print(f"停止PID控制器时发生错误: {e}")
+        
+        # 强制停止控制线程
+        if hasattr(self, 'control_thread') and self.control_thread.isRunning():
+            print("正在停止控制线程...")
+            try:
+                # 先尝试正常停止
+                self.control_thread.stop()
+                
+                # 等待线程停止，但设置超时
+                if not self.control_thread.wait(1000):  # 等待1秒
+                    print("控制线程未响应，强制终止...")
+                    self.control_thread.terminate()
+                    
+                    # 再次等待
+                    if not self.control_thread.wait(1000):  # 再等待1秒
+                        print("警告：控制线程无法正常停止，使用强制方式")
+                        self.control_thread.quit()
+                        self.control_thread.wait(1000)  # 最后等待1秒
+            except Exception as e:
+                print(f"停止控制线程时发生错误: {e}")
+                # 如果出现异常，尝试强制终止
+                try:
+                    self.control_thread.terminate()
+                except:
+                    pass
+        
+        # 确保所有状态都被重置
+        self.is_running = False
+        self.is_paused = False
+        self.elapsed_seconds = 0
+        self.target_duration = 0  # 重置目标持续时间
+        self.update_elapsed_time()
+        
+        # 更新状态显示
+        self.status_label.setText("Status: Auto Stopped")
+        
+        # 重新启用开始按钮
+        self.start_button.setEnabled(True)
+        
+        print("=== 自动控制已完全停止 ===\n")
+        
+        # 显示自动停止完成的消息
+        QMessageBox.information(self, "自动停止完成", f"已达到设定的持续时间 {self.target_duration//60} 分钟，控制已自动停止")
+
     def update_elapsed_time(self):
         if self.is_running and not self.is_paused:
             self.elapsed_seconds += 1
             minutes = self.elapsed_seconds // 60
             seconds = self.elapsed_seconds % 60
             self.timer_label.setText(f"Elapsed Time: {minutes}:{seconds:02d}")
+            
+            # 检查是否达到设定的持续时间
+            if hasattr(self, 'target_duration') and self.target_duration > 0:
+                if self.elapsed_seconds >= self.target_duration:
+                    print(f"\n=== 达到设定持续时间 {self.target_duration} 秒，自动停止控制 ===")
+                    self.auto_stop_control()
 
     def update_status(self):
         """更新状态和图表"""
@@ -1277,6 +1391,32 @@ class PIDSystemUI(QMainWindow):
         if not data['time']:
             QMessageBox.warning(self, "警告", "没有可导出的数据")
             return
+        
+        # 获取基准长度（时间数据长度）
+        base_length = len(data['time'])
+        print(f"数据导出：基准长度（时间数据）: {base_length}")
+        
+        # 数据长度检查和填充函数
+        def ensure_length(data_list, target_length, fill_value=0.0):
+            """确保数据列表长度与目标长度一致，不足时用fill_value填充"""
+            if len(data_list) < target_length:
+                print(f"数据长度不足: {len(data_list)} < {target_length}，用{fill_value}填充")
+                data_list.extend([fill_value] * (target_length - len(data_list)))
+            elif len(data_list) > target_length:
+                print(f"数据长度超出: {len(data_list)} > {target_length}，截取前{target_length}个数据")
+                data_list = data_list[:target_length]
+            return data_list
+        
+        # 确保所有数据长度一致
+        data['system_time'] = ensure_length(data['system_time'], base_length, 0.0)
+        data['voltage'] = ensure_length(data['voltage'], base_length, 0.0)
+        data['current'] = ensure_length(data['current'], base_length, 0.0)
+        
+        # 确保温度数据长度一致
+        for channel_key in data['temperatures']:
+            data['temperatures'][channel_key] = ensure_length(data['temperatures'][channel_key], base_length, 0.0)
+        
+        print(f"数据长度检查完成，所有数据长度: {base_length}")
             
         # 创建温度数据字典
         temp_data = {
@@ -1287,7 +1427,7 @@ class PIDSystemUI(QMainWindow):
         # 首先添加主传感器的温度数据（如果存在）
         if self.main_sensor is not None:
             channel_key = f'channel_{self.main_sensor}'
-            if channel_key in data['temperatures'] and data['temperatures'][channel_key]:
+            if channel_key in data['temperatures']:
                 temp_data[f'Main Sensor {self.main_sensor} Temperature (°C)'] = data['temperatures'][channel_key]
         
         # 添加其他选中的传感器温度数据
@@ -1296,7 +1436,7 @@ class PIDSystemUI(QMainWindow):
             if sensor == self.main_sensor:
                 continue
             channel_key = f'channel_{sensor}'
-            if channel_key in data['temperatures'] and data['temperatures'][channel_key]:
+            if channel_key in data['temperatures']:
                 temp_data[f'Sensor {sensor} Temperature (°C)'] = data['temperatures'][channel_key]
         
         # 创建电压电流数据字典
@@ -1417,6 +1557,8 @@ class PIDSystemUI(QMainWindow):
 
     def start_temperature_test(self):
         """开始温度测试"""
+        # 获取用户设置的采样率
+        sampling_rate = float(self.sampling_rate_input.text())
         # 获取当前选择的串口
         port = self.temp_sensor_port_combo.currentText()
         if not port:
@@ -1458,7 +1600,7 @@ class PIDSystemUI(QMainWindow):
         self.test_start_time = time.time()
         self.test_timer = QTimer()
         self.test_timer.timeout.connect(self.update_test_data)
-        self.test_timer.start(1000)  # 每秒更新一次
+        self.test_timer.start(sampling_rate*2)  # 每秒更新一次
 
         # 更新按钮状态
         self.start_test_button.setEnabled(False)
@@ -1769,6 +1911,27 @@ class PIDSystemUI(QMainWindow):
         except Exception as e:
             print(f"加载材料参数时发生错误: {e}")
             self.material_params = {}
+
+# 设置异常钩子
+def exception_hook(exctype, value, traceback_obj):
+    print("未捕获的异常:")
+    print("类型:", exctype)
+    print("值:", value)
+    print("追踪:", traceback.format_tb(traceback_obj))
+    sys.__excepthook__(exctype, value, traceback_obj)
+
+sys.excepthook = exception_hook
+
+# 设置日志目录
+log_dir = os.path.join(user_data_dir('PIDTempControl', 'Personal'), 'logs')
+os.makedirs(log_dir, exist_ok=True)
+
+# 配置日志
+logging.basicConfig(
+    filename=os.path.join(log_dir, 'pid_control.log'),
+    level=logging.DEBUG,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
