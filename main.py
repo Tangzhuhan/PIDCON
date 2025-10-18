@@ -1465,12 +1465,12 @@ class PIDSystemUI(QMainWindow):
                 
                 QMessageBox.information(self, "成功", "数据已成功保存")
                 
-                # 导出成功后清空所有数据
-                self.clear_all_data()
+                # 导出成功后清空所有数据和图表
+                self.clear_all_data(clear_plots=True)
             except Exception as e:
                 QMessageBox.critical(self, "错误", f"保存数据失败: {str(e)}")
 
-    def clear_all_data(self):
+    def clear_all_data(self, clear_plots=False):
         """清空所有数据，包括UI层和控制器层数据"""
         # 清空UI层数据
         self.control_data = {
@@ -1496,13 +1496,14 @@ class PIDSystemUI(QMainWindow):
             self.pid_controller.warmup_current_data = []
             self.pid_controller.warmup_temperature_data = {}
         
-        # 清空图表显示
-        if hasattr(self, 'voltage_plot'):
-            self.voltage_plot.clear()
-        if hasattr(self, 'current_plot'):
-            self.current_plot.clear()
-        if hasattr(self, 'temperature_plot'):
-            self.temperature_plot.clear()
+        # 只有在导出数据后才清空图表显示
+        if clear_plots:
+            if hasattr(self, 'voltage_plot'):
+                self.voltage_plot.clear()
+            if hasattr(self, 'current_plot'):
+                self.current_plot.clear()
+            if hasattr(self, 'temperature_plot'):
+                self.temperature_plot.clear()
         
         print("所有数据已清空，准备开始新的实验")
 
